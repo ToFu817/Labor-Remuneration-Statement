@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>稅務小豆腐 - 勞報單產生器</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap');
+
+        :root {
+            --tofu-yellow: #fefce8; 
+            --tofu-primary: #eab308;
+            --tofu-text: #422006;
+        }
+
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: #fef9c3;
+            color: var(--tofu-text);
+        }
+
+        .section-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 1px solid #fde047;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        }
+
+        .section-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #854d0e;
+            margin-bottom: 16px;
+            padding-left: 10px;
+            border-left: 4px solid #facc15;
+        }
+
+        .input-label {
+            display: block;
+            font-size: 0.85rem;
+            font-weight: 500;
+            margin-bottom: 4px;
+        }
+
+        .input-control {
+            width: 100%;
+            border: 1px solid #fde68a;
+            border-radius: 8px;
+            padding: 8px 12px;
+            background: #fffdf2;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .input-control:focus {
+            border-color: #facc15;
+        }
+
+        /* 試算小標籤 */
+        .calc-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 8px;
+            background-color: #fef3c7;
+            border: 1px solid #fcd34d;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            color: #92400e;
+            margin-right: 4px;
+        }
+
+        /* 報表區域優化 */
+        .preview-wrapper {
+            background: #d4d4d4;
+            padding: 40px 0;
+            display: flex;
+            justify-content: center;
+        }
+
+        .a4-page {
+            width: 210mm;
+            height: 297mm; /* 固定高度防止爆頁 */
+            background: white;
+            padding: 10mm 15mm; /* 減少上下內距，讓內容往上 */
+            box-sizing: border-box;
+            color: black;
+            position: relative;
+            overflow: hidden; /* 強制不產生溢出內容 */
+        }
+
+        .report-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 8px; /* 縮減間距 */
+        }
+
+        .report-table th, .report-table td {
+            border: 1px solid #000;
+            padding: 5px 10px; /* 縮減 padding */
+            font-size: 13px;
+            text-align: left;
+        }
+
+        .label-cell {
+            background-color: #fffde7;
+            font-weight: bold;
+            width: 130px;
+        }
+
+        .attachment-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 8px;
+        }
+
+        .box-placeholder {
+            border: 1px dashed #999;
+            height: 180px; /* 固定高度，太大的照片會被壓縮在此高度內 */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #fafafa;
+            font-size: 11px;
+            color: #888;
+            overflow: hidden; /* 隱藏超出部分 */
+            position: relative;
+        }
+
+        .box-placeholder img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain; /* 改為 contain：完整顯示圖片，不裁切，自動適應格子 */
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        @media print {
+            .no-print { display: none !important; }
+            .preview-wrapper { background: white !important; padding: 0 !important; }
+            .a4-page { 
+                box-shadow: none !important; 
+                margin: 0 !important; 
+                border: none !important; 
+                height: 297mm !important;
+            }
+            @page { size: A4; margin: 0; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="no-print max-w-4xl mx-auto py-8 px-4">
+        <div class="flex items-center gap-3 mb-6">
+            <div class="w-10 h-10 bg-yellow-400 rounded-lg flex items-center justify-center text-white text-2xl">🧾</div>
+            <h1 class="text-3xl font-black">稅務小豆腐 <span class="text-sm font-normal text-yellow-700">| 勞報單產生器</span></h1>
+        </div>
+
+        <!-- 1. 所得人基本資料 -->
+        <div class="section-card">
+            <h2 class="section-title">1. 所得人基本資料</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="input-label">姓名</label>
+                    <input type="text" id="in_name" class="input-control" placeholder="輸入姓名">
+                </div>
+                <div>
+                    <label class="input-label">Email</label>
+                    <input type="email" id="in_email" class="input-control">
+                </div>
+                <div>
+                    <label class="input-label">國籍</label>
+                    <select id="in_nationality" class="input-control">
+                        <option value="local">本國人</option>
+                        <option value="foreign_short">外國人在臺未滿 183 天</option>
+                        <option value="foreign_long">外國人在臺待滿 183 天</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="input-label">身分證字號</label>
+                    <input type="text" id="in_id" class="input-control">
+                </div>
+                <div class="md:col-span-2">
+                    <label class="input-label">戶籍地址</label>
+                    <input type="text" id="in_address" class="input-control">
+                </div>
+                <div>
+                    <label class="input-label">聯絡電話</label>
+                    <input type="text" id="in_phone" class="input-control">
+                </div>
+                <div>
+                    <label class="input-label">免扣二代健保</label>
+                    <select id="in_union" class="input-control">
+                        <option value="否">否 (需扣二代健保)</option>
+                        <option value="是">是 (免扣二代健保)</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. 勞報資料 -->
+        <div class="section-card">
+            <h2 class="section-title">2. 勞報資料</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="md:col-span-2">
+                    <label class="input-label">申報類別</label>
+                    <select id="in_category" class="input-control">
+                        <option value="9A">9A 執行業務所得</option>
+                        <option value="9B">9B 稿費 (免稅額內不計)</option>
+                        <option value="50">50 薪資所得</option>
+                        <option value="92">92 其他所得</option>
+                    </select>
+                </div>
+                <div class="md:col-span-2">
+                    <label class="input-label">執行業務類別</label>
+                    <select id="in_exec_type" class="input-control">
+                        <option value="0" data-rate="0">請選擇類別...</option>
+                        <option value="10" data-rate="30">10 律師 (30%)</option>
+                        <option value="11" data-rate="35">11 會計師 (35%)</option>
+                        <option value="12" data-rate="20">12 精算師 (20%)</option>
+                        <option value="13" data-rate="30">13 地政士 (30%)</option>
+                        <option value="14" data-rate="35">14 記帳士 (35%)</option>
+                        <option value="15" data-rate="15">15 仲裁人 (15%)</option>
+                        <option value="16" data-rate="30">16 民間公證人 (30%)</option>
+                        <option value="17" data-rate="35">17 不動產估價師 (35%)</option>
+                        <option value="20" data-rate="35">20 技師 (35%)</option>
+                        <option value="21" data-rate="35">21 建築師 (35%)</option>
+                        <option value="22" data-rate="35">22 公共安全檢查人員 (35%)</option>
+                        <option value="24" data-rate="20">24 工匠-工資收入 (20%)</option>
+                        <option value="25" data-rate="62">25 工匠-工料收入 (62%)</option>
+                        <option value="26" data-rate="25">26 引水人 (25%)</option>
+                        <option value="29" data-rate="62">29 美術工藝家-工料 (62%)</option>
+                        <option value="30" data-rate="40">30 內科醫師 (40%)</option>
+                        <option value="31" data-rate="45">31 外科醫師 (45%)</option>
+                        <option value="32" data-rate="40">32 小兒科醫師 (40%)</option>
+                        <option value="33" data-rate="45">33 婦產科醫師 (45%)</option>
+                        <option value="34" data-rate="40">34 眼科醫師 (40%)</option>
+                        <option value="35" data-rate="40">35 耳鼻喉科醫師 (40%)</option>
+                        <option value="36" data-rate="40">36 牙科醫師 (40%)</option>
+                        <option value="39" data-rate="43">39 其他科別醫師 (43%)</option>
+                        <option value="41" data-rate="20">41 藥師-非健保收入 (20%)</option>
+                        <option value="45" data-rate="20">45 營養師 (20%)</option>
+                        <option value="50" data-rate="45">50 中醫師-非健保收入 (45%)</option>
+                        <option value="55" data-rate="20">55 心理師 (20%)</option>
+                        <option value="61" data-rate="30">61 書畫家、版畫家 (30%)</option>
+                        <option value="70" data-rate="45">70 表演人 (45%)</option>
+                        <option value="71" data-rate="26">71 保險經紀人 (26%)</option>
+                        <option value="72" data-rate="45">72 節目製作人 (45%)</option>
+                        <option value="76" data-rate="20">76 一般經紀人 (20%)</option>
+                        <option value="90" data-rate="0">90 其他 (0%)</option>
+                        <option value="92" data-rate="20">92 程式設計師 (20%)</option>
+                        <option value="93" data-rate="30">93 專利代理人 (30%)</option>
+                        <option value="98" data-rate="30">98 稿費/演講鐘點-非自行出版 (30%)</option>
+                        <option value="99" data-rate="75">99 稿費/版稅-自行出版 (75%)</option>
+                    </select>
+                </div>
+                <div>
+                    <div class="flex items-center justify-between mb-1">
+                        <label class="input-label mb-0">給付總金額</label>
+                        <div id="quick_calc" class="flex">
+                            <span class="calc-badge">扣繳： <span id="badge_tax">0</span></span>
+                            <span class="calc-badge">二代健保： <span id="badge_health">0</span></span>
+                        </div>
+                    </div>
+                    <input type="number" id="in_amount" class="input-control font-bold text-lg text-yellow-900" value="0">
+                </div>
+                <div>
+                    <label class="input-label">勞務內容</label>
+                    <input type="text" id="in_content" class="input-control" placeholder="例如：文案撰寫、程式開發">
+                </div>
+                <div>
+                    <label class="input-label">勞務開始日期</label>
+                    <input type="date" id="in_start" class="input-control">
+                </div>
+                <div>
+                    <label class="input-label">勞務結束日期</label>
+                    <input type="date" id="in_end" class="input-control">
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. 公司名稱支付資料 -->
+        <div class="section-card">
+            <h2 class="section-title">3. 公司名稱支付資料</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="md:col-span-2">
+                    <label class="input-label">支付款項公司名稱</label>
+                    <input type="text" id="in_company" class="input-control" placeholder="OO有限公司">
+                </div>
+                <div>
+                    <label class="input-label">付款方式</label>
+                    <select id="in_pay_method" class="input-control">
+                        <option value="匯款">匯款</option>
+                        <option value="現金">現金</option>
+                        <option value="支票">支票</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="input-label">給付日期</label>
+                    <input type="date" id="in_pay_date" class="input-control">
+                </div>
+                <div>
+                    <label class="input-label">所得人銀行代碼+名稱</label>
+                    <input type="text" id="in_bank" class="input-control" placeholder="銀行代碼 + 名稱">
+                </div>
+                <div>
+                    <label class="input-label">分行</label>
+                    <input type="text" id="in_branch" class="input-control">
+                </div>
+                <div>
+                    <label class="input-label">所得人戶名</label>
+                    <input type="text" id="in_acc_name" class="input-control">
+                </div>
+                <div>
+                    <label class="input-label">所得人帳號</label>
+                    <input type="text" id="in_acc_no" class="input-control">
+                </div>
+            </div>
+        </div>
+
+        <!-- 4. 插入附件 -->
+        <div class="section-card">
+            <h2 class="section-title">4. 附件上傳 (身分證及存摺)</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                    <label class="input-label text-xs">身分證正面</label>
+                    <input type="file" id="up_front" accept="image/*" class="text-xs">
+                </div>
+                <div>
+                    <label class="input-label text-xs">身分證反面</label>
+                    <input type="file" id="up_back" accept="image/*" class="text-xs">
+                </div>
+                <div>
+                    <label class="input-label text-xs">存摺封面</label>
+                    <input type="file" id="up_passbook" accept="image/*" class="text-xs">
+                </div>
+            </div>
+            <div class="mt-8">
+                <button onclick="window.print()" class="w-full bg-yellow-400 hover:bg-yellow-500 text-yellow-900 font-bold py-4 rounded-xl shadow-lg transition transform hover:-translate-y-0.5">
+                    點我產生勞報單 (PDF)
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 預覽 A4 -->
+    <div class="preview-wrapper">
+        <div class="a4-page" id="printable_page">
+            <div class="text-center mb-4"> <!-- 縮減下邊距 -->
+                <h1 class="text-xl font-bold border-b-2 border-black inline-block px-12 pb-1" id="out_company_title">＿＿＿＿＿＿＿＿</h1>
+                <h2 class="text-lg font-bold mt-2 tracking-widest">勞 務 報 酬 單</h2>
+            </div>
+
+            <div class="text-right text-xs mb-1">給付日期：<span id="out_pay_date"></span></div>
+
+            <table class="report-table">
+                <tr>
+                    <td class="label-cell">所得人姓名</td>
+                    <td id="out_name" class="w-1/3"></td>
+                    <td class="label-cell">身分證字號</td>
+                    <td id="out_id"></td>
+                </tr>
+                <tr>
+                    <td class="label-cell">電子郵件</td>
+                    <td id="out_email"></td>
+                    <td class="label-cell">聯絡電話</td>
+                    <td id="out_phone"></td>
+                </tr>
+                <tr>
+                    <td class="label-cell">國籍</td>
+                    <td id="out_nationality"></td>
+                    <td class="label-cell">免扣二代健保</td>
+                    <td id="out_union"></td>
+                </tr>
+                <tr>
+                    <td class="label-cell">戶籍地址</td>
+                    <td colspan="3" id="out_address"></td>
+                </tr>
+            </table>
+
+            <table class="report-table mt-3">
+                <tr>
+                    <td class="label-cell">申報類別</td>
+                    <td id="out_category" class="w-1/3"></td>
+                    <td class="label-cell">執行業務代號</td>
+                    <td id="out_exec_type"></td>
+                </tr>
+                <tr>
+                    <td class="label-cell">勞務內容</td>
+                    <td colspan="3" id="out_content"></td>
+                </tr>
+                <tr>
+                    <td class="label-cell">勞務期間</td>
+                    <td colspan="3"><span id="out_start"></span> ～ <span id="out_end"></span></td>
+                </tr>
+            </table>
+
+            <div class="flex border border-black border-t-0 -mt-[1px]">
+                <div class="w-1/2 p-3 border-r border-black">
+                    <p class="font-bold border-b border-black mb-2 text-center text-sm">給付金額試算</p>
+                    <div class="text-xs space-y-1">
+                        <div class="flex justify-between"><span>給付總金額：</span><span id="calc_total">0</span></div>
+                        <div class="flex justify-between"><span>代扣所得稅：</span><span id="calc_tax">0</span></div>
+                        <div class="flex justify-between"><span>二代健保費：</span><span id="calc_health">0</span></div>
+                        <div class="flex justify-between font-bold border-t border-black pt-1 mt-1 text-sm">
+                            <span>實際支付金額：</span><span id="calc_net">0</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="w-1/2 p-3 flex flex-col justify-between">
+                    <p class="font-bold text-sm">所得人簽章：</p>
+                    <div class="border-b border-dotted border-gray-400 mb-2 mt-12"></div>
+                </div>
+            </div>
+
+            <table class="report-table mt-3">
+                <tr>
+                    <th colspan="4" class="label-cell text-center py-1">支付資料</th>
+                </tr>
+                <tr>
+                    <td class="label-cell">付款方式</td>
+                    <td id="out_pay_method"></td>
+                    <td class="label-cell">銀行/分行</td>
+                    <td><span id="out_bank"></span> <span id="out_branch"></span></td>
+                </tr>
+                <tr>
+                    <td class="label-cell">所得人戶名</td>
+                    <td id="out_acc_name"></td>
+                    <td class="label-cell">所得人帳號</td>
+                    <td id="out_acc_no"></td>
+                </tr>
+            </table>
+
+            <div class="mt-4">
+                <p class="text-[10px] font-bold mb-1">附件：身分證正反面影本與存摺封面</p>
+                <div class="attachment-grid">
+                    <div class="box-placeholder" id="p_front">身分證正面</div>
+                    <div class="box-placeholder" id="p_back">身分證反面</div>
+                    <div class="box-placeholder col-span-2" style="height: 200px;" id="p_passbook">存摺封面</div>
+                </div>
+            </div>
+
+            <div class="absolute bottom-6 left-10 right-10 text-[9px] text-gray-400 border-t pt-2 italic">
+                ※ 給付後 ,請傳給事務所申報扣繳,以免受罰。  執行業務扣繳10%門檻 $20,010；二代健保2.11%扣繳門檻 $20,000。
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function sync() {
+            // 基本欄位同步
+            const fields = ['name', 'email', 'id', 'address', 'phone', 'content', 'start', 'end', 'bank', 'branch', 'acc_name', 'acc_no', 'pay_method'];
+            fields.forEach(id => {
+                const el = document.getElementById('in_' + id);
+                const out = document.getElementById('out_' + id);
+                if (el && out) out.innerText = el.value;
+            });
+
+            // 給付日期同步
+            const payDateVal = document.getElementById('in_pay_date').value;
+            if (payDateVal) {
+                const d = new Date(payDateVal);
+                document.getElementById('out_pay_date').innerText = `${d.getFullYear()-1911}年${d.getMonth()+1}月${d.getDate()}日`;
+            }
+
+            // 公司名稱
+            document.getElementById('out_company_title').innerText = document.getElementById('in_company').value || '＿＿＿＿＿＿＿＿';
+
+            // 下拉選單處理
+            const nat = document.getElementById('in_nationality');
+            document.getElementById('out_nationality').innerText = nat.options[nat.selectedIndex].text;
+            
+            const union = document.getElementById('in_union');
+            document.getElementById('out_union').innerText = union.value;
+
+            const cat = document.getElementById('in_category');
+            document.getElementById('out_category').innerText = cat.options[cat.selectedIndex].text;
+
+            const exec = document.getElementById('in_exec_type');
+            document.getElementById('out_exec_type').innerText = exec.value === "0" ? "無" : exec.options[exec.selectedIndex].text;
+
+            // --- 金額試算邏輯 ---
+            const amount = parseFloat(document.getElementById('in_amount').value) || 0;
+            const nationality = document.getElementById('in_nationality').value;
+            const catVal = document.getElementById('in_category').value;
+            const unionVal = document.getElementById('in_union').value;
+
+            let tax = 0;
+            let health = 0;
+
+            if (nationality === 'local' || nationality === 'foreign_long') {
+                // 1. 本國人 或 外籍居住者 (居住滿183天) -> 適用居住者稅率 
+                if ((catVal === '9A' || catVal === '9B') && amount >= 20010) {
+                    tax = Math.round(amount * 0.1);
+                } else if (catVal === '50' && amount >= 90500) { // 115年起薪資扣繳門檻調升
+                    tax = Math.round(amount * 0.05);
+                }
+                
+                // 二代健保 (2.11%) 門檻 20,000
+                if (unionVal === '否' && amount >= 20000) {
+                    health = Math.round(amount * 0.0211);
+                }
+            } else {
+                // 非居住者 (在台未滿183天)
+                if (catVal === '9A' || catVal === '9B') {
+                    // 執行業務所得、稿費扣繳率 20%
+                    tax = Math.round(amount * 0.20);
+                } else if (catVal === '50') {
+                    // 薪資所得扣繳率 18%
+                    tax = Math.round(amount * 0.18);
+                }
+                // 二代健保 (2.11%) 門檻 20,000
+                // 但若您的實務需求需扣除，可在此保留判斷：
+                if (unionVal === '否' && amount >= 20000) {
+                    health = Math.round(amount * 0.0211);
+                }
+
+
+            }
+
+            const net = amount - tax - health;
+
+            // 更新預覽表格
+            document.getElementById('calc_total').innerText = amount.toLocaleString() + ' 元';
+            document.getElementById('calc_tax').innerText = tax.toLocaleString() + ' 元';
+            document.getElementById('calc_health').innerText = health.toLocaleString() + ' 元';
+            document.getElementById('calc_net').innerText = net.toLocaleString() + ' 元';
+
+            // 更新頂部小標籤即時顯示
+            document.getElementById('badge_tax').innerText = tax.toLocaleString();
+            document.getElementById('badge_health').innerText = health.toLocaleString();
+        }
+
+        // 圖片上傳預覽
+        function bindImage(upId, prevId) {
+            document.getElementById(upId).addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                        const prevEl = document.getElementById(prevId);
+                        prevEl.innerHTML = `<img src="${ev.target.result}">`;
+                    };
+                    reader.readAsDataURL(file);
+                }
+            });
+        }
+        bindImage('up_front', 'p_front');
+        bindImage('up_back', 'p_back');
+        bindImage('up_passbook', 'p_passbook');
+
+        // 全域監聽
+        document.querySelectorAll('input, select').forEach(el => el.addEventListener('input', sync));
+        
+        // 初始設定今日為給付日期
+        window.onload = () => {
+            const today = new Date();
+            document.getElementById('in_pay_date').valueAsDate = today;
+            sync();
+        };
+    </script>
+</body>
+</html>
